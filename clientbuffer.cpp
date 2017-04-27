@@ -269,7 +269,7 @@ CModule::EModRet CClientBufferMod::OnChanBufferPlayMessage(CMessage& Message)
     if (!HasClient(identifier))
         return HALTCORE;
 
-    if (HasSeenTimestamp(identifier, Message.GetChan()->GetName(), Message.GetTime()))
+    if (HasSeenTimestamp(identifier, GetTarget(Message), Message.GetTime()))
         return HALTCORE;
 
     return CONTINUE;
@@ -301,7 +301,7 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayMessage(CMessage& Message)
     if (!HasClient(identifier))
         return HALTCORE;
 
-    if (HasSeenTimestamp(identifier, Message.GetNick().GetNick(), Message.GetTime()))
+    if (HasSeenTimestamp(identifier, GetTarget(Message), Message.GetTime()))
         return HALTCORE;
 
     return CONTINUE;
@@ -355,8 +355,14 @@ CString CClientBufferMod::GetTarget(const CMessage& msg)
 {
     if (msg.GetChan())
         return msg.GetChan()->GetName();
-    else
-        return msg.GetNick().GetNick();
+    else {
+        CString Nick = msg.GetNick().GetNick();
+        CIRCNetwork* Network = msg.GetNetwork();
+        // Detect self-messages
+        if (Network && Nick == Network->GetNick() && msg.GetParams().size() >= 1)
+            return msg.GetParam(0);
+        return Nick;
+    }
 }
 #else
 /// Split an IRC message line into parts.
