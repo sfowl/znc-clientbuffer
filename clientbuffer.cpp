@@ -292,7 +292,7 @@ bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& ta
 bool CClientBufferMod::HasSeenTimestamp(const CString& identifier, const CString& target, const timeval& tv)
 {
     const timeval seen = GetTimestamp(identifier, target);
-    return timercmp(&seen, &tv, >);
+    return !timercmp(&seen, &tv, <);
 }
 
 bool CClientBufferMod::UpdateTimestamp(const CString& identifier, const CString& target, const timeval& tv)
