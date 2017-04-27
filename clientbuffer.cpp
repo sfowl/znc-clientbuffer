@@ -67,6 +67,7 @@ private:
     void UpdateTimestamp(const CClient* client, const CString& target);
 };
 
+/// Callback for the AddClient module command.
 void CClientBufferMod::OnAddClientCommand(const CString& line)
 {
     const CString identifier = line.Token(1);
@@ -82,6 +83,7 @@ void CClientBufferMod::OnAddClientCommand(const CString& line)
     PutModule("Client added: " + identifier);
 }
 
+/// Callback for the DelClient module command.
 void CClientBufferMod::OnDelClientCommand(const CString& line)
 {
     const CString identifier = line.Token(1);
@@ -97,6 +99,7 @@ void CClientBufferMod::OnDelClientCommand(const CString& line)
     PutModule("Client removed: " + identifier);
 }
 
+/// Callback for the ListClients module command.
 void CClientBufferMod::OnListClientsCommand(const CString& line)
 {
     const CString& current = GetClient()->GetIdentifier();
@@ -122,6 +125,8 @@ void CClientBufferMod::OnListClientsCommand(const CString& line)
         PutModule(table);
 }
 
+/// ZNC callback (called when a client successfully logged in to ZNC).
+/// Implements the "autoadd" option.
 void CClientBufferMod::OnClientLogin()
 {
     const CString& current = GetClient()->GetIdentifier();
@@ -131,6 +136,8 @@ void CClientBufferMod::OnClientLogin()
     }
 }
 
+/// ZNC callback (called when a client sends any message to ZNC).
+/// Updates the client "last seen" timestamp.
 CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
 {
     CClient* client = GetClient();
@@ -143,6 +150,8 @@ CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
     return CONTINUE;
 }
 
+/// ZNC callback (called when ZNC sends a raw traffic line to a client).
+/// Updates the client "last seen" timestamp.
 CModule::EModRet CClientBufferMod::OnSendToClient(CString& line, CClient& client)
 {
     CIRCNetwork* network = GetNetwork();
@@ -158,6 +167,8 @@ CModule::EModRet CClientBufferMod::OnSendToClient(CString& line, CClient& client
     return CONTINUE;
 }
 
+/// ZNC callback (called before a channel buffer is played back to a client).
+/// Filters out the "Buffer Playback..." message as necessary.
 CModule::EModRet CClientBufferMod::OnChanBufferStarting(CChan& chan, CClient& client)
 {
     if (client.HasServerTime())
@@ -175,6 +186,8 @@ CModule::EModRet CClientBufferMod::OnChanBufferStarting(CChan& chan, CClient& cl
     return CONTINUE;
 }
 
+/// ZNC callback (called after a channel buffer was played back to a client).
+/// Filters out the "Buffer Complete" message as necessary.
 CModule::EModRet CClientBufferMod::OnChanBufferEnding(CChan& chan, CClient& client)
 {
     if (client.HasServerTime())
@@ -192,6 +205,8 @@ CModule::EModRet CClientBufferMod::OnChanBufferEnding(CChan& chan, CClient& clie
     return CONTINUE;
 }
 
+/// ZNC callback (called for each message during a channel's buffer play back).
+/// Filters out the messages as necessary.
 CModule::EModRet CClientBufferMod::OnChanBufferPlayLine2(CChan& chan, CClient& client, CString& line, const timeval& tv)
 {
     const CString& identifier = client.GetIdentifier();
@@ -204,6 +219,8 @@ CModule::EModRet CClientBufferMod::OnChanBufferPlayLine2(CChan& chan, CClient& c
     return CONTINUE;
 }
 
+/// ZNC callback (called for each message during a query's buffer play back).
+/// Filters out the messages as necessary.
 CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CString& line, const timeval& tv)
 {
     const CString& identifier = client.GetIdentifier();
@@ -217,11 +234,15 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
     return CONTINUE;
 }
 
+/// Add a client identifier.
+/// Returns true upon success.
 bool CClientBufferMod::AddClient(const CString& identifier)
 {
     return SetNV(identifier, "");
 }
 
+/// Remove a client identifier.
+/// Returns true upon success.
 bool CClientBufferMod::DelClient(const CString& identifier)
 {
     SCString keys;
@@ -236,11 +257,15 @@ bool CClientBufferMod::DelClient(const CString& identifier)
     return success;
 }
 
+/// Check whether a client identifier is known.
 bool CClientBufferMod::HasClient(const CString& identifier)
 {
     return !identifier.empty() && FindNV(identifier) != EndNV();
 }
 
+/// Split an IRC message line into parts.
+/// Populates nick, cmd and target.
+/// Returns true upon success.
 bool CClientBufferMod::ParseMessage(const CString& line, CNick& nick, CString& cmd, CString& target) const
 {
     // discard message tags
@@ -273,6 +298,7 @@ bool CClientBufferMod::ParseMessage(const CString& line, CNick& nick, CString& c
     return !target.empty() && !cmd.empty();
 }
 
+/// Get the "last seen" timestamp for a given client identifier and target.
 timeval CClientBufferMod::GetTimestamp(const CString& identifier, const CString& target)
 {
     CString timestamp = GetNV(identifier + "/" + target);
@@ -287,11 +313,13 @@ timeval CClientBufferMod::GetTimestamp(const CString& identifier, const CString&
     return tv;
 }
 
+/// Get the timestamp of the last message in a given ZNC playback buffer.
 timeval CClientBufferMod::GetTimestamp(const CBuffer& buffer) const
 {
     return buffer.GetBufLine(buffer.Size() - 1).GetTime();
 }
 
+/// Set the "last seen" timestamp for a given client identifier and target.
 bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& target, const timeval& tv)
 {
     char timestamp[32];
@@ -299,12 +327,19 @@ bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& ta
     return SetNV(identifier + "/" + target, timestamp);
 }
 
+/// Returns true if the given timestamp is not greater than the "last
+/// seen" timestamp for the given client identifier and target.
 bool CClientBufferMod::HasSeenTimestamp(const CString& identifier, const CString& target, const timeval& tv)
 {
     const timeval seen = GetTimestamp(identifier, target);
     return !timercmp(&seen, &tv, <);
 }
 
+/// Checks whether the given client should receive a message with the
+/// given timestamp and target.
+/// If the timestamp is greater than the client's "last seen"
+/// timestamp, updates the client's "last seen" timestamp accordingly
+/// and returns true. Otherwise, returns false.
 bool CClientBufferMod::UpdateTimestamp(const CString& identifier, const CString& target, const timeval& tv)
 {
     if (!HasSeenTimestamp(identifier, target, tv))
@@ -312,6 +347,8 @@ bool CClientBufferMod::UpdateTimestamp(const CString& identifier, const CString&
     return false;
 }
 
+/// Update the "last seen" timestamp of the given client and target to
+/// the current time.
 void CClientBufferMod::UpdateTimestamp(const CClient* client, const CString& target)
 {
     if (client && !client->IsPlaybackActive()) {
