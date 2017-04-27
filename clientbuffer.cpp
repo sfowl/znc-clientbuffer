@@ -195,6 +195,10 @@ CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
 #if ZNC17
 CModule::EModRet CClientBufferMod::OnSendToClientMessage(CMessage& Message)
 {
+    // make sure not to update the timestamp for a channel when joining it
+    if (Message.GetType() == CMessage::Type::Join)
+        return CONTINUE;
+
     // make sure not to update the timestamp for a channel when attaching it
     CChan* chan = Message.GetChan();
     if (!chan || !chan->IsDetached())
