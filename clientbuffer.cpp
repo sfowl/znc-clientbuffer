@@ -46,7 +46,17 @@ public:
     }
 
     bool OnLoad(const CString& sArgs, CString& sErrorMsg) override {
-        m_bAutoAdd = sArgs.Token(0).Equals("autoadd", CString::CaseInsensitive);
+        VCString Args;
+        sArgs.Split(" ", Args);
+        for (size_t n=0; n<Args.size(); n++)
+        {
+            if (Args[n].Equals("autoadd", CString::CaseInsensitive))
+                m_bAutoAdd = true;
+            else if (Args[n].StartsWith("timelimit=", CString::CaseInsensitive))
+                m_iTimeLimit = Args[n].Token(1, false, "=").ToInt();
+            else
+	            fprintf(stderr, "ClientBuffer: Unrecognized option: %s\n", Args[n].c_str());
+        }
         return true;
     }
 
@@ -76,7 +86,8 @@ public:
 #endif
 
 private:
-    bool m_bAutoAdd;
+    bool m_bAutoAdd = false;
+    int m_iTimeLimit = 0;
 
     bool AddClient(const CString& identifier);
     bool DelClient(const CString& identifier);
@@ -97,6 +108,8 @@ private:
 #if !ZNC17
     void UpdateTimestamp(const CClient* client, const CString& target);
 #endif
+
+	bool WithinTimeLimit(const timeval& tv);
 };
 
 /// Callback for the AddClient module command.
@@ -242,6 +255,9 @@ CModule::EModRet CClientBufferMod::OnChanBufferStarting(CChan& chan, CClient& cl
 
     // let "Buffer Playback..." message through?
     const CBuffer& buffer = chan.GetBuffer();
+    if (!WithinTimeLimit(GetTimestamp(buffer)))
+	    return HALTCORE;
+
     if (!buffer.IsEmpty() && HasSeenTimestamp(identifier, chan.GetName(), GetTimestamp(buffer)))
         return HALTCORE;
 
@@ -261,6 +277,9 @@ CModule::EModRet CClientBufferMod::OnChanBufferEnding(CChan& chan, CClient& clie
 
     // let "Buffer Complete" message through?
     const CBuffer& buffer = chan.GetBuffer();
+    if (!WithinTimeLimit(GetTimestamp(buffer)))
+	    return HALTCORE;
+
     if (!buffer.IsEmpty() && !UpdateTimestamp(identifier, chan.GetName(), GetTimestamp(buffer)))
         return HALTCORE;
 
@@ -280,6 +299,9 @@ CModule::EModRet CClientBufferMod::OnChanBufferPlayMessage(CMessage& Message)
     if (!HasClient(identifier))
         return HALTCORE;
 
+    if (!WithinTimeLimit(Message.GetTime()))
+	    return HALTCORE;
+
     if (HasSeenTimestamp(identifier, GetTarget(Message), Message.GetTime()))
         return HALTCORE;
 
@@ -291,6 +313,9 @@ CModule::EModRet CClientBufferMod::OnChanBufferPlayLine2(CChan& chan, CClient& c
     const CString& identifier = client.GetIdentifier();
     if (!HasClient(identifier))
         return HALTCORE;
+
+    if (!WithinTimeLimit(tv))
+	    return HALTCORE;
 
     if (HasSeenTimestamp(identifier, chan.GetName(), tv))
         return HALTCORE;
@@ -312,6 +337,9 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayMessage(CMessage& Message)
     if (!HasClient(identifier))
         return HALTCORE;
 
+    if (!WithinTimeLimit(Message.GetTime()))
+	    return HALTCORE;
+
     if (HasSeenTimestamp(identifier, GetTarget(Message), Message.GetTime()))
         return HALTCORE;
 
@@ -323,6 +351,9 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
     const CString& identifier = client.GetIdentifier();
     if (!HasClient(identifier))
         return HALTCORE;
+
+    if (!WithinTimeLimit(tv))
+	    return HALTCORE;
 
     CNick nick; CString cmd, target;
     if (ParseMessage(line, nick, cmd, target) && !UpdateTimestamp(identifier, target, tv))
@@ -476,6 +507,15 @@ void CClientBufferMod::UpdateTimestamp(const CClient* client, const CString& tar
     }
 }
 #endif
+
+bool CClientBufferMod::WithinTimeLimit(const timeval& tv)
+{
+	if (!m_iTimeLimit)
+		return true;
+	timeval now;
+	gettimeofday(&now, NULL);
+	return now.tv_sec - tv.tv_sec < m_iTimeLimit;
+}
 
 template<> void TModInfo<CClientBufferMod>(CModInfo& info) {
 	info.SetWikiPage("Clientbuffer");
