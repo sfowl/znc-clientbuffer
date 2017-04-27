@@ -28,6 +28,12 @@
 #error The clientbuffer module requires ZNC version 1.6.0 or later.
 #endif
 
+#if (VERSION_MAJOR > 1) || (VERSION_MAJOR == 1 && VERSION_MINOR >= 7)
+#define ZNC17 1
+#else
+#define ZNC17 0
+#endif
+
 class CClientBufferMod : public CModule
 {
 public:
@@ -45,26 +51,45 @@ public:
 
     virtual void OnClientLogin() override;
 
+#if ZNC17
+    virtual EModRet OnUserRawMessage(CMessage& Message) override;
+    virtual EModRet OnSendToClientMessage(CMessage& Message) override;
+#else
     virtual EModRet OnUserRaw(CString& line) override;
     virtual EModRet OnSendToClient(CString& line, CClient& client) override;
+#endif
 
     virtual EModRet OnChanBufferStarting(CChan& chan, CClient& client) override;
     virtual EModRet OnChanBufferEnding(CChan& chan, CClient& client) override;
+
+#if ZNC17
+    virtual EModRet OnChanBufferPlayMessage(CMessage& message) override;
+    virtual EModRet OnPrivBufferPlayMessage(CMessage& message) override;
+#else
     virtual EModRet OnChanBufferPlayLine2(CChan& chan, CClient& client, CString& line, const timeval& tv) override;
     virtual EModRet OnPrivBufferPlayLine2(CClient& client, CString& line, const timeval& tv) override;
+#endif
 
 private:
     bool AddClient(const CString& identifier);
     bool DelClient(const CString& identifier);
     bool HasClient(const CString& identifier);
 
+#if ZNC17
+    CString GetTarget(const CMessage& msg);
+#else
     bool ParseMessage(const CString& line, CNick& nick, CString& cmd, CString& target) const;
+#endif
+
     timeval GetTimestamp(const CString& identifier, const CString& target);
     timeval GetTimestamp(const CBuffer& buffer) const;
     bool SetTimestamp(const CString& identifier, const CString& target, const timeval& tv);
     bool HasSeenTimestamp(const CString& identifier, const CString& target, const timeval& tv);
     bool UpdateTimestamp(const CString& identifier, const CString& target, const timeval& tv);
+
+#if !ZNC17
     void UpdateTimestamp(const CClient* client, const CString& target);
+#endif
 };
 
 /// Callback for the AddClient module command.
@@ -138,6 +163,20 @@ void CClientBufferMod::OnClientLogin()
 
 /// ZNC callback (called when a client sends any message to ZNC).
 /// Updates the client "last seen" timestamp.
+#if ZNC17
+CModule::EModRet CClientBufferMod::OnUserRawMessage(CMessage& Message)
+{
+    CClient* client = Message.GetClient();
+    if (!client)
+        return CONTINUE;
+
+    // make sure not to update the timestamp for a channel when joining it
+    if (Message.GetType() != CMessage::Type::Join)
+        UpdateTimestamp(client->GetIdentifier(), GetTarget(Message), Message.GetTime());
+
+    return CONTINUE;
+}
+#else
 CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
 {
     CClient* client = GetClient();
@@ -149,9 +188,20 @@ CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
     }
     return CONTINUE;
 }
+#endif
 
 /// ZNC callback (called when ZNC sends a raw traffic line to a client).
 /// Updates the client "last seen" timestamp.
+#if ZNC17
+CModule::EModRet CClientBufferMod::OnSendToClientMessage(CMessage& Message)
+{
+    // make sure not to update the timestamp for a channel when attaching it
+    CChan* chan = Message.GetChan();
+    if (!chan || !chan->IsDetached())
+        UpdateTimestamp(Message.GetClient()->GetIdentifier(), GetTarget(Message), Message.GetTime());
+    return CONTINUE;
+}
+#else
 CModule::EModRet CClientBufferMod::OnSendToClient(CString& line, CClient& client)
 {
     CIRCNetwork* network = GetNetwork();
@@ -166,6 +216,7 @@ CModule::EModRet CClientBufferMod::OnSendToClient(CString& line, CClient& client
     }
     return CONTINUE;
 }
+#endif
 
 /// ZNC callback (called before a channel buffer is played back to a client).
 /// Filters out the "Buffer Playback..." message as necessary.
@@ -207,6 +258,23 @@ CModule::EModRet CClientBufferMod::OnChanBufferEnding(CChan& chan, CClient& clie
 
 /// ZNC callback (called for each message during a channel's buffer play back).
 /// Filters out the messages as necessary.
+#if ZNC17
+CModule::EModRet CClientBufferMod::OnChanBufferPlayMessage(CMessage& Message)
+{
+    CClient* client = Message.GetClient();
+    if (!client)
+        return CONTINUE;
+
+    const CString& identifier = client->GetIdentifier();
+    if (!HasClient(identifier))
+        return HALTCORE;
+
+    if (HasSeenTimestamp(identifier, Message.GetChan()->GetName(), Message.GetTime()))
+        return HALTCORE;
+
+    return CONTINUE;
+}
+#else
 CModule::EModRet CClientBufferMod::OnChanBufferPlayLine2(CChan& chan, CClient& client, CString& line, const timeval& tv)
 {
     const CString& identifier = client.GetIdentifier();
@@ -218,9 +286,27 @@ CModule::EModRet CClientBufferMod::OnChanBufferPlayLine2(CChan& chan, CClient& c
 
     return CONTINUE;
 }
+#endif
 
 /// ZNC callback (called for each message during a query's buffer play back).
 /// Filters out the messages as necessary.
+#if ZNC17
+CModule::EModRet CClientBufferMod::OnPrivBufferPlayMessage(CMessage& Message)
+{
+    CClient* client = Message.GetClient();
+    if (!client)
+        return CONTINUE;
+
+    const CString& identifier = client->GetIdentifier();
+    if (!HasClient(identifier))
+        return HALTCORE;
+
+    if (HasSeenTimestamp(identifier, Message.GetNick().GetNick(), Message.GetTime()))
+        return HALTCORE;
+
+    return CONTINUE;
+}
+#else
 CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CString& line, const timeval& tv)
 {
     const CString& identifier = client.GetIdentifier();
@@ -233,6 +319,7 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
 
     return CONTINUE;
 }
+#endif
 
 /// Add a client identifier.
 /// Returns true upon success.
@@ -263,6 +350,15 @@ bool CClientBufferMod::HasClient(const CString& identifier)
     return !identifier.empty() && FindNV(identifier) != EndNV();
 }
 
+#if ZNC17
+CString CClientBufferMod::GetTarget(const CMessage& msg)
+{
+    if (msg.GetChan())
+        return msg.GetChan()->GetName();
+    else
+        return msg.GetNick().GetNick();
+}
+#else
 /// Split an IRC message line into parts.
 /// Populates nick, cmd and target.
 /// Returns true upon success.
@@ -297,6 +393,7 @@ bool CClientBufferMod::ParseMessage(const CString& line, CNick& nick, CString& c
 
     return !target.empty() && !cmd.empty();
 }
+#endif
 
 /// Get the "last seen" timestamp for a given client identifier and target.
 timeval CClientBufferMod::GetTimestamp(const CString& identifier, const CString& target)
@@ -347,6 +444,7 @@ bool CClientBufferMod::UpdateTimestamp(const CString& identifier, const CString&
     return false;
 }
 
+#if !ZNC17
 /// Update the "last seen" timestamp of the given client and target to
 /// the current time.
 void CClientBufferMod::UpdateTimestamp(const CClient* client, const CString& target)
@@ -360,6 +458,7 @@ void CClientBufferMod::UpdateTimestamp(const CClient* client, const CString& tar
         }
     }
 }
+#endif
 
 template<> void TModInfo<CClientBufferMod>(CModInfo& info) {
 	info.SetWikiPage("Clientbuffer");
