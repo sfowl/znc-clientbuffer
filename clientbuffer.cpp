@@ -61,6 +61,7 @@ private:
     bool ParseMessage(const CString& line, CNick& nick, CString& cmd, CString& target) const;
     timeval GetTimestamp(const CString& identifier, const CString& target);
     timeval GetTimestamp(const CBuffer& buffer) const;
+    bool SetTimestamp(const CString& identifier, const CString& target, const timeval& tv);
     bool HasSeenTimestamp(const CString& identifier, const CString& target, const timeval& tv);
     bool UpdateTimestamp(const CString& identifier, const CString& target, const timeval& tv);
     void UpdateTimestamp(const CClient* client, const CString& target);
@@ -264,16 +265,28 @@ bool CClientBufferMod::ParseMessage(const CString& line, CNick& nick, CString& c
 
 timeval CClientBufferMod::GetTimestamp(const CString& identifier, const CString& target)
 {
+    CString timestamp = GetNV(identifier + "/" + target);
+
+    long long sec = 0;
+    long usec = 0;
+    std::sscanf(timestamp.c_str(), "%lld.%06ld", &sec, &usec);
+
     timeval tv;
-    double timestamp = GetNV(identifier + "/" + target).ToDouble();
-    tv.tv_sec = timestamp;
-    tv.tv_usec = (timestamp - tv.tv_sec) * 1000000;
+    tv.tv_sec = (time_t)sec;
+    tv.tv_usec = (suseconds_t)usec;
     return tv;
 }
 
 timeval CClientBufferMod::GetTimestamp(const CBuffer& buffer) const
 {
     return buffer.GetBufLine(buffer.Size() - 1).GetTime();
+}
+
+bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& target, const timeval& tv)
+{
+    char timestamp[32];
+    std::snprintf(timestamp, 32, "%lld.%06ld", (long long)tv.tv_sec, (long)tv.tv_usec);
+    return SetNV(identifier + "/" + target, timestamp);
 }
 
 bool CClientBufferMod::HasSeenTimestamp(const CString& identifier, const CString& target, const timeval& tv)
@@ -284,10 +297,8 @@ bool CClientBufferMod::HasSeenTimestamp(const CString& identifier, const CString
 
 bool CClientBufferMod::UpdateTimestamp(const CString& identifier, const CString& target, const timeval& tv)
 {
-    if (!HasSeenTimestamp(identifier, target, tv)) {
-        double timestamp = tv.tv_sec + tv.tv_usec / 1000000.0;
-        return SetNV(identifier + "/" + target, CString(timestamp));
-    }
+    if (!HasSeenTimestamp(identifier, target, tv))
+        return SetTimestamp(identifier, target, tv);
     return false;
 }
 
