@@ -45,6 +45,11 @@ public:
         AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
     }
 
+    bool OnLoad(const CString& sArgs, CString& sErrorMsg) override {
+        m_bAutoAdd = sArgs.Token(0).Equals("autoadd", CString::CaseInsensitive);
+        return true;
+    }
+
     void OnAddClientCommand(const CString& line);
     void OnDelClientCommand(const CString& line);
     void OnListClientsCommand(const CString& line);
@@ -71,6 +76,8 @@ public:
 #endif
 
 private:
+    bool m_bAutoAdd;
+
     bool AddClient(const CString& identifier);
     bool DelClient(const CString& identifier);
     bool HasClient(const CString& identifier);
@@ -156,7 +163,7 @@ void CClientBufferMod::OnClientLogin()
 {
     const CString& current = GetClient()->GetIdentifier();
 
-    if (!HasClient(current) && GetArgs().Token(0).Equals("autoadd", CString::CaseInsensitive)) {
+    if (!HasClient(current) && m_bAutoAdd) {
         AddClient(current);
     }
 }
