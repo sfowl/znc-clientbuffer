@@ -34,6 +34,19 @@
 #define ZNC17 0
 #endif
 
+class CClientBufferCacheJob : public CTimer
+{
+public:
+    CClientBufferCacheJob(CModule* pModule, unsigned int uInterval, unsigned int uCycles, const CString& sLabel, const CString& sDescription)
+        : CTimer(pModule, uInterval, uCycles, sLabel, sDescription) {}
+    virtual ~CClientBufferCacheJob() {}
+
+protected:
+    virtual void RunJob() {
+        GetModule()->SaveRegistry();
+    }
+};
+
 class CClientBufferMod : public CModule
 {
 public:
@@ -43,6 +56,7 @@ public:
         AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier>", "Add a client.");
         AddCommand("DelClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnDelClientCommand), "<identifier>", "Delete a client.");
         AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
+        AddTimer(new CClientBufferCacheJob(this, 60 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
     }
 
     bool OnLoad(const CString& sArgs, CString& sErrorMsg) override {
@@ -367,7 +381,7 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
 /// Returns true upon success.
 bool CClientBufferMod::AddClient(const CString& identifier)
 {
-    return SetNV(identifier, "");
+    return SetNV(identifier, "", false);
 }
 
 /// Remove a client identifier.
@@ -382,7 +396,7 @@ bool CClientBufferMod::DelClient(const CString& identifier)
     }
     bool success = true;
     for (const CString& key : keys)
-        success &= DelNV(key);
+        success &= DelNV(key, false);
     return success;
 }
 
@@ -469,7 +483,7 @@ bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& ta
 {
     char timestamp[32];
     std::snprintf(timestamp, 32, "%lld.%06ld", (long long)tv.tv_sec, (long)tv.tv_usec);
-    return SetNV(identifier + "/" + target, timestamp);
+    return SetNV(identifier + "/" + target, timestamp, false);
 }
 
 /// Returns true if the given timestamp is not greater than the "last
