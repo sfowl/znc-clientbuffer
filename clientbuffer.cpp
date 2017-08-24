@@ -42,9 +42,7 @@ public:
     virtual ~CClientBufferCacheJob() {}
 
 protected:
-    virtual void RunJob() {
-        GetModule()->SaveRegistry();
-    }
+    virtual void RunJob();
 };
 
 class CClientBufferMod : public CModule
@@ -101,6 +99,7 @@ public:
 
 private:
     bool m_bAutoAdd = false;
+    bool m_bDirty = false;
     int m_iTimeLimit = 0;
 
     bool AddClient(const CString& identifier);
@@ -124,6 +123,9 @@ private:
 #endif
 
 	bool WithinTimeLimit(const timeval& tv);
+
+    void FlushRegistry();
+    friend class CClientBufferCacheJob;
 };
 
 /// Callback for the AddClient module command.
@@ -381,6 +383,7 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
 /// Returns true upon success.
 bool CClientBufferMod::AddClient(const CString& identifier)
 {
+    m_bDirty = true;
     return SetNV(identifier, "", false);
 }
 
@@ -397,6 +400,7 @@ bool CClientBufferMod::DelClient(const CString& identifier)
     bool success = true;
     for (const CString& key : keys)
         success &= DelNV(key, false);
+    m_bDirty = true;
     return success;
 }
 
@@ -483,6 +487,7 @@ bool CClientBufferMod::SetTimestamp(const CString& identifier, const CString& ta
 {
     char timestamp[32];
     std::snprintf(timestamp, 32, "%lld.%06ld", (long long)tv.tv_sec, (long)tv.tv_usec);
+    m_bDirty = true;
     return SetNV(identifier + "/" + target, timestamp, false);
 }
 
@@ -534,6 +539,19 @@ bool CClientBufferMod::WithinTimeLimit(const timeval& tv)
 template<> void TModInfo<CClientBufferMod>(CModInfo& info) {
 	info.SetWikiPage("Clientbuffer");
 	info.SetHasArgs(true);
+}
+
+void CClientBufferCacheJob::RunJob() {
+    CClientBufferMod* mod = (CClientBufferMod*)GetModule();
+    mod->FlushRegistry();
+}
+
+void CClientBufferMod::FlushRegistry()
+{
+    if (m_bDirty) {
+        SaveRegistry();
+        m_bDirty = false;
+    }
 }
 
 NETWORKMODULEDEFS(CClientBufferMod, "Client specific buffer playback")
