@@ -54,7 +54,7 @@ public:
         AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier>", "Add a client.");
         AddCommand("DelClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnDelClientCommand), "<identifier>", "Delete a client.");
         AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
-        AddTimer(new CClientBufferCacheJob(this, 60 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
+        AddTimer(new CClientBufferCacheJob(this, 1 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
     }
 
     bool OnLoad(const CString& sArgs, CString& sErrorMsg) override {
