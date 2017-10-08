@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2015 J-P Nurmi
+ * Copyright (C) 2014-2015 J-P Nurmi
+ * Copyright (C) 2017-2018 Vladimir Panteleev and contributors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
