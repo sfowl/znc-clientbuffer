@@ -81,6 +81,7 @@ public:
 
 #if ZNC17
     virtual EModRet OnUserRawMessage(CMessage& Message) override;
+    virtual EModRet OnUserTextMessage(CTextMessage& Message) override;
     virtual EModRet OnSendToClientMessage(CMessage& Message) override;
 #else
     virtual EModRet OnUserRaw(CString& line) override;
@@ -223,6 +224,19 @@ CModule::EModRet CClientBufferMod::OnUserRaw(CString& line)
         if (ParseMessage(line, nick, cmd, target) && !cmd.Equals("JOIN"))
             UpdateTimestamp(client, target);
     }
+    return CONTINUE;
+}
+#endif
+
+/// ZNC callback for messages sent from clients.
+/// Used in addition to OnUserRawMessage as this one will contain the parsed target.
+#if ZNC17
+CModule::EModRet CClientBufferMod::OnUserTextMessage(CTextMessage& Message)
+{
+    CClient* client = Message.GetClient();
+    if (client)
+        UpdateTimestamp(client->GetIdentifier(), GetTarget(Message), Message.GetTime());
+
     return CONTINUE;
 }
 #endif
