@@ -52,14 +52,10 @@ public:
     MODCONSTRUCTOR(CClientBufferMod)
     {
         AddHelpCommand();
-        AddCommand("AddClient", t_d("<identifier> [timelimit]"), t_d("Add a client with optiona time limit."),
-                   [=](const CString& sLine) { OnAddClientCommand(sLine); });
-        AddCommand("DelClient", t_d("<identifier>"), t_d("Delete a client."),
-                   [=](const CString& sLine) { OnDelClientCommand(sLine); });
-        AddCommand("ChangeClient", t_d("<identifier> [timelimit]"), t_d("Change a clients time limit."),
-                   [=](const CString& sLine) { OnChangeClientCommand(sLine); });           
-        AddCommand("ListClients", "", t_d("List known clients."),
-                   [=](const CString& sLine) { OnListClientsCommand(sLine); });
+        AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier> [timelimit]", "Add a client with optional time limit.");
+        AddCommand("DelClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnDelClientCommand), "<identifier>", "Delete a client.");
+        AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
+        AddCommand("SetClientTimeLimit", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnSetClientTimeLimit), "<identifier> [timelimit]", "Change a clients time limit.");           
         AddTimer(new CClientBufferCacheJob(this, 1 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
     }
 
@@ -70,6 +66,8 @@ public:
         {
             if (Args[n].Equals("autoadd", CString::CaseInsensitive))
                 m_bAutoAdd = true;
+            else if (Args[n].StartsWith("timelimit=", CString::CaseInsensitive))
+                m_iTimeLimit = Args[n].Token(1, false, "=").ToInt();
             else
 	            fprintf(stderr, "ClientBuffer: Unrecognized option: %s\n", Args[n].c_str());
         }
@@ -78,7 +76,7 @@ public:
 
     void OnAddClientCommand(const CString& line);
     void OnDelClientCommand(const CString& line);
-    void OnChangeClientCommand(const CString& line);
+    void OnSetClientTimeLimit(const CString& line);
     void OnListClientsCommand(const CString& line);
 
     virtual void OnClientLogin() override;
@@ -106,6 +104,7 @@ public:
 private:
     bool m_bAutoAdd = false;
     bool m_bDirty = false;
+    int m_iTimeLimit = 0;
 
     bool AddClient(const CString& identifier, const int timeLimit = 0);
     bool DelClient(const CString& identifier);
@@ -147,7 +146,8 @@ void CClientBufferMod::OnAddClientCommand(const CString& line)
         PutModule("Client already exists: " + identifier);
         return;
     }
-    AddClient(identifier, timeLimit);
+
+    AddClient(identifier, timeLimit > 0 ? timeLimit : m_iTimeLimit);
     PutModule("Client added: " + identifier);
 }
 
@@ -167,8 +167,8 @@ void CClientBufferMod::OnDelClientCommand(const CString& line)
     PutModule("Client removed: " + identifier);
 }
 
-/// Callback for the ChangeClient module command.
-void CClientBufferMod::OnChangeClientCommand(const CString& line)
+/// Callback for the SetClientTimeLimit module command.
+void CClientBufferMod::OnSetClientTimeLimit(const CString& line)
 {
     const CString identifier = line.Token(1);
     const int timeLimit = line.Token(2).ToInt();
