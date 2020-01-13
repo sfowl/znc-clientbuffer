@@ -52,10 +52,10 @@ public:
     MODCONSTRUCTOR(CClientBufferMod)
     {
         AddHelpCommand();
-        AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier> [timelimit]", "Add a client with optional time limit.");
+        AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier>", "Add a client.");
         AddCommand("DelClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnDelClientCommand), "<identifier>", "Delete a client.");
         AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
-        AddCommand("SetClientTimeLimit", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnSetClientTimeLimit), "<identifier> [timelimit]", "Change a clients time limit.");           
+        AddCommand("SetClientTimeLimit", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnSetClientTimeLimit), "<identifier> <timelimit>", "Change a client's time limit.");           
         AddTimer(new CClientBufferCacheJob(this, 1 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
     }
 
@@ -106,8 +106,9 @@ private:
     bool m_bDirty = false;
     int m_iTimeLimit = 0;
 
-    bool AddClient(const CString& identifier, const int timeLimit = 0);
+    bool AddClient(const CString& identifier);
     bool DelClient(const CString& identifier);
+    bool SetClientTimeLimit(const CString& identifier, const int timeLimit);
     bool HasClient(const CString& identifier);
 
 #if ZNC17
@@ -136,10 +137,9 @@ private:
 void CClientBufferMod::OnAddClientCommand(const CString& line)
 {
     const CString identifier = line.Token(1);
-    const int timeLimit = line.Token(2).ToInt();
 
     if (identifier.empty()) {
-        PutModule("Usage: AddClient <identifier> [timelimit]");
+        PutModule("Usage: AddClient <identifier> <timelimit>");
         return;
     }
     if (HasClient(identifier)) {
@@ -147,7 +147,7 @@ void CClientBufferMod::OnAddClientCommand(const CString& line)
         return;
     }
 
-    AddClient(identifier, timeLimit > 0 ? timeLimit : m_iTimeLimit);
+    AddClient(identifier);
     PutModule("Client added: " + identifier);
 }
 
@@ -173,16 +173,16 @@ void CClientBufferMod::OnSetClientTimeLimit(const CString& line)
     const CString identifier = line.Token(1);
     const int timeLimit = line.Token(2).ToInt();
 
-    if (identifier.empty()) {
-        PutModule("Usage: ChangeClient <identifier> [timelimit]");
+    if (identifier.empty() || !timeLimit) {
+        PutModule("Usage: SetClientTimeLimit <identifier> <timelimit>");
         return;
     }
     if (!HasClient(identifier)) {
         PutModule("Client doesn't exist: " + identifier);
         return;
     }
-    AddClient(identifier, timeLimit);
-    PutModule("Client " + identifier +  " changed time limit: " + CString(timeLimit) );
+    SetClientTimeLimit(identifier, timeLimit);
+    PutModule("Client's " + identifier +  " changed time limit: " + CString(timeLimit) );
 }
 
 /// Callback for the ListClients module command.
@@ -435,10 +435,10 @@ CModule::EModRet CClientBufferMod::OnPrivBufferPlayLine2(CClient& client, CStrin
 
 /// Add a client identifier.
 /// Returns true upon success.
-bool CClientBufferMod::AddClient(const CString& identifier, const int timeLimit)
+bool CClientBufferMod::AddClient(const CString& identifier)
 {
     m_bDirty = true;
-    return SetNV(identifier, "", false) && SetNV(identifier + "/timelimit", CString(timeLimit), false);
+    return SetNV(identifier, "", false);
 }
 
 /// Remove a client identifier.
@@ -462,6 +462,14 @@ bool CClientBufferMod::DelClient(const CString& identifier)
 bool CClientBufferMod::HasClient(const CString& identifier)
 {
     return !identifier.empty() && FindNV(identifier) != EndNV();
+}
+
+/// Set a client's timelimit.
+/// Returns true upon success.
+bool CClientBufferMod::SetClientTimeLimit(const CString& identifier, const int timeLimit)
+{
+    m_bDirty = true;
+    return SetNV(identifier + "/timelimit", CString(timeLimit), false);
 }
 
 #if ZNC17
@@ -584,11 +592,11 @@ void CClientBufferMod::UpdateTimestamp(const CClient* client, const CString& tar
 bool CClientBufferMod::WithinTimeLimit(const timeval& tv, const CString& identifier)
 {
     int timeLimit = GetNV(identifier + "/timelimit").ToInt();
-	if (!timeLimit)
+	if (!timeLimit && !m_iTimeLimit)
 		return true;
 	timeval now;
 	gettimeofday(&now, NULL);
-	return now.tv_sec - tv.tv_sec < timeLimit;
+	return now.tv_sec - tv.tv_sec < timeLimit ? timeLimit : m_iTimeLimit;
 }
 
 template<> void TModInfo<CClientBufferMod>(CModInfo& info) {
