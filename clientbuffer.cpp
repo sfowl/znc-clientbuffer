@@ -55,7 +55,7 @@ public:
         AddCommand("AddClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnAddClientCommand), "<identifier>", "Add a client.");
         AddCommand("DelClient", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnDelClientCommand), "<identifier>", "Delete a client.");
         AddCommand("ListClients", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnListClientsCommand), "", "List known clients.");
-        AddCommand("SetClientTimeLimit", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnSetClientTimeLimit), "<identifier> <timelimit>", "Change a client's time limit.");           
+        AddCommand("SetClientTimeLimit", static_cast<CModCommand::ModCmdFunc>(&CClientBufferMod::OnSetClientTimeLimit), "<identifier> [timelimit]", "Change a client's time limit.");
         AddTimer(new CClientBufferCacheJob(this, 1 /* sec */, 0, "ClientBufferCache", "Periodically save ClientBuffer registry to disk"));
     }
 
@@ -173,8 +173,8 @@ void CClientBufferMod::OnSetClientTimeLimit(const CString& line)
     const CString identifier = line.Token(1);
     const int timeLimit = line.Token(2).ToInt();
 
-    if (identifier.empty() || !timeLimit) {
-        PutModule("Usage: SetClientTimeLimit <identifier> <timelimit>");
+    if (identifier.empty()) {
+        PutModule("Usage: SetClientTimeLimit <identifier> [timelimit]");
         return;
     }
     if (!HasClient(identifier)) {
@@ -182,7 +182,10 @@ void CClientBufferMod::OnSetClientTimeLimit(const CString& line)
         return;
     }
     SetClientTimeLimit(identifier, timeLimit);
-    PutModule("Client's " + identifier +  " changed time limit: " + CString(timeLimit) );
+    if (timeLimit)
+        PutModule("Client's " + identifier +  " changed time limit: " + CString(timeLimit) );
+    else
+        PutModule("Client's " + identifier +  " cleared time limit.");
 }
 
 /// Callback for the ListClients module command.
@@ -469,7 +472,10 @@ bool CClientBufferMod::HasClient(const CString& identifier)
 bool CClientBufferMod::SetClientTimeLimit(const CString& identifier, const int timeLimit)
 {
     m_bDirty = true;
-    return SetNV(identifier + "/timelimit", CString(timeLimit), false);
+    if (timeLimit)
+        return SetNV(identifier + "/timelimit", CString(timeLimit), false);
+    else
+        return DelNV(identifier + "/timelimit", false);
 }
 
 #if ZNC17
