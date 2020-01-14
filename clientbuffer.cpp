@@ -139,7 +139,7 @@ void CClientBufferMod::OnAddClientCommand(const CString& line)
     const CString identifier = line.Token(1);
 
     if (identifier.empty()) {
-        PutModule("Usage: AddClient <identifier> <timelimit>");
+        PutModule("Usage: AddClient <identifier>");
         return;
     }
     if (HasClient(identifier)) {
