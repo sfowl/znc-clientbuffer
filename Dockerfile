@@ -1,4 +1,4 @@
-FROM docker.io/library/znc:latest
+FROM quay.io/sfowler/znc:latest
 
 ADD Makefile clientbuffer.cpp ./
 
